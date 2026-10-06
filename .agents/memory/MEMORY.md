@@ -1,0 +1,1 @@
+- [WNTR hydraulic simulations](wntr-hydraulics.md) — WNTR patterns need lists, and `add_pipe` does not accept a `status` keyword.

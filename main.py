@@ -40,22 +40,29 @@ ZONE_NODES: dict[str, tuple[str, ...]] = {
     "C": ("C1", "C2", "C3"),
     "D": ("D1", "D2", "D3"),
 }
+ZONE_PRESSURE_NODES = {
+    "A": ("A1",),
+    "B": ("B1", "B2", "B3"),
+    "C": ("C1", "C2", "C3"),
+    "D": ("D1", "D2", "D3"),
+}
 ZONE_FLOW_PIPES = {
     "A": "P_A_BRANCH",
     "B": "P_B_CORE",
-    "C": "P_C_CORE",
-    "D": "P_D_CORE",
+    "C": "P_C_BRANCH",
+    "D": "P_D_BRANCH",
 }
 ZONE_COLORS = {
     "NORMAL": "#21845b",
     "WARNING": "#c28b1c",
+    "ANOMALY DETECTED": "#c28b1c",
     "HIGH RISK": "#d74b50",
 }
 NORMAL_PROFILE = (0.94, 0.97, 1.00, 1.03, 1.00, 0.97, 0.94, 1.00)
 HYDRAULIC_STEP_SECONDS = 3600
 LEAK_LEVELS = tuple(np.linspace(0.0, 1.0, 6))
-PRESSURE_TOLERANCE_M = 0.25
-FLOW_TOLERANCE_LPS = 0.035
+PRESSURE_TOLERANCE_M = 2.8
+FLOW_TOLERANCE_LPS = 1.3
 
 
 @dataclass(frozen=True)
@@ -172,7 +179,7 @@ def zone_measurement(
 ) -> ZoneMeasurement:
     return ZoneMeasurement(
         pressure_m=float(np.mean([
-            snapshot.pressures[node] for node in ZONE_NODES[zone]
+            snapshot.pressures[node] for node in ZONE_PRESSURE_NODES[zone]
         ])),
         flow_lps=snapshot.flows_lps[ZONE_FLOW_PIPES[zone]],
     )
@@ -216,6 +223,7 @@ class HydraulicCalibration:
         self.baselines: dict[str, ZoneMeasurement] = {}
         self.pressure_limits: dict[str, float] = {}
         self.flow_limits: dict[str, float] = {}
+        self.ml_scales: dict[str, float] = {}
         self.models: dict[str, IsolationForest] = {}
 
         for zone in ZONE_NODES:
@@ -256,6 +264,10 @@ class HydraulicCalibration:
             )
             model.fit(training_rows)
             self.models[zone] = model
+            self.ml_scales[zone] = max(
+                0.012,
+                float(np.std(model.decision_function(training_rows))) * 0.4,
+            )
 
         self._validate_hydraulics()
 
@@ -322,12 +334,15 @@ class SmartLeakSimulation:
 
     @property
     def leak_severity(self) -> float:
-        return float(np.clip(
-            (self.seconds - LEAK_START_SECONDS)
-            / (DEMO_SECONDS - LEAK_START_SECONDS),
-            0.0,
-            1.0,
-        ))
+        if self.seconds <= LEAK_START_SECONDS:
+            return 0.0
+        if self.seconds < 60:
+            return 0.04 * (self.seconds - 30) / 30
+        if self.seconds < 90:
+            return 0.04 + 0.11 * (self.seconds - 60) / 30
+        if self.seconds < 120:
+            return 0.15 + 0.47 * (self.seconds - 90) / 30
+        return 0.62 + 0.38 * (self.seconds - 120) / 30
 
     @property
     def phase(self) -> str:
@@ -348,6 +363,8 @@ class SmartLeakSimulation:
             return "HIGH RISK"
         if highest >= 31:
             return "WARNING"
+        if any(self.anomaly_flags.values()):
+            return "ANOMALY DETECTED"
         return "NORMAL"
 
     @property
@@ -390,9 +407,15 @@ class SmartLeakSimulation:
             history = self.histories[zone]
             history.append(measurement)
             feature_row = features_for_history(list(history))
-            ml_flag = (
-                self.calibration.models[zone].predict(feature_row)[0] == -1
+            ml_decision = float(
+                self.calibration.models[zone].decision_function(feature_row)[0]
             )
+            ml_strength = float(np.clip(
+                max(0.0, -ml_decision) / self.calibration.ml_scales[zone],
+                0.0,
+                1.0,
+            ))
+            ml_flag = ml_strength >= 0.5
             baseline = self.calibration.baselines[zone]
             pressure_drop = max(0.0, baseline.pressure_m - measurement.pressure_m)
             flow_deviation = abs(measurement.flow_lps - baseline.flow_lps)
@@ -414,7 +437,7 @@ class SmartLeakSimulation:
             current_contributions = {
                 "pressure": RISK_WEIGHTS["pressure"] * pressure_strength,
                 "flow": RISK_WEIGHTS["flow"] * flow_strength,
-                "ml": RISK_WEIGHTS["ml"] if ml_flag else 0.0,
+                "ml": RISK_WEIGHTS["ml"] * ml_strength,
                 "persistence": (
                     RISK_WEIGHTS["persistence"]
                     * (sum(persistence) / len(persistence))
@@ -816,16 +839,32 @@ class SmartLeakWindow:
 
         if self.engine.risk["B"] >= 61:
             b = self.engine.measurements["B"]
+            why = []
+            if self.engine.contributions["B"]["pressure"] > 0:
+                why.append("pressure deviation")
+            if self.engine.contributions["B"]["flow"] > 0:
+                why.append("abnormal flow")
+            if self.engine.ml_flags["B"]:
+                why.append("ML anomaly")
+            if self.engine.contributions["B"]["persistence"] > 0:
+                why.append("persistent behavior")
             alert = (
                 "HIGH-RISK ANOMALY DETECTED  ·  ZONE B\n"
                 f"Pressure {b.pressure_m:.2f} m  ·  Flow {b.flow_lps:.2f} L/s"
                 f"  ·  Risk {self.engine.risk['B']:.0f}%\n"
-                "Inspect the affected Zone B pipeline section."
+                f"WHY FLAGGED  ✓ {'  ·  ✓ '.join(why)}\n"
+                "Recommended: inspect the affected Zone B pipeline section."
             )
+            if self.engine.seconds >= DEMO_SECONDS:
+                priorities = "  ·  ".join(
+                    f"{label} Zone {zone}"
+                    for zone, _score, label in self.engine.priorities()
+                )
+                alert += f"\nMAINTENANCE PRIORITY  {priorities}"
             axis.text(
                 0.49, 0.075, alert,
                 transform=axis.transAxes,
-                fontsize=7,
+                fontsize=6.5,
                 color="#a7363d",
                 fontweight="bold",
                 va="top",
@@ -940,8 +979,20 @@ def run_self_test() -> None:
     for run_number in range(1, 4):
         engine.reset()
         engine.start()
+        high_risk_at_120 = False
+        ml_detected_by_120 = False
         while engine.running:
             engine.tick()
+            if engine.seconds == 90:
+                ml_detected_by_120 = engine.ml_flags["B"]
+            if engine.seconds == 120:
+                high_risk_at_120 = engine.risk["B"] >= 61
+        assert ml_detected_by_120, (
+            f"Run {run_number}: Isolation Forest did not flag Zone B by 90 seconds."
+        )
+        assert high_risk_at_120, (
+            f"Run {run_number}: Zone B did not reach high risk by 120 seconds."
+        )
         zone_b_risk = engine.risk["B"]
         assert zone_b_risk >= 61, (
             f"Run {run_number}: expected high Zone B risk, got {zone_b_risk:.1f}%."
@@ -951,6 +1002,16 @@ def run_self_test() -> None:
         )
         assert engine.probable_zone == "B", (
             f"Run {run_number}: expected Zone B to be the probable leak zone."
+        )
+        priorities = engine.priorities()
+        assert [(zone, label) for zone, _score, label in priorities] == [
+            ("B", "CRITICAL"),
+            ("D", "HIGH"),
+            ("C", "MEDIUM"),
+            ("A", "LOW"),
+        ], (
+            f"Run {run_number}: unexpected risk-based maintenance priority "
+            f"{priorities!r}."
         )
         final_runs.append(tuple(
             (zone, round(engine.risk[zone], 6))
