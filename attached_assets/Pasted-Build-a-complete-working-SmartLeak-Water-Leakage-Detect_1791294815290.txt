@@ -1,0 +1,564 @@
+Build a complete, working **SmartLeak Water Leakage Detection Simulation** for my college mini-project.
+
+## IMPORTANT SCOPE
+
+This is a **simulation/prototype only**.
+
+DO NOT build:
+- A website
+- React
+- HTML/CSS frontend
+- FastAPI backend
+- REST APIs
+- Login/authentication
+- Cloud database
+- User accounts
+- IoT hardware
+- ESP32
+- Physical sensors
+
+Everything must run as a **single Python application**.
+
+The purpose is to demonstrate SmartLeak live in a classroom presentation.
+
+---
+
+# 1. PROJECT OBJECTIVE
+
+Create:
+
+**SmartLeak — Intelligent Water Network Leak Detection Simulation**
+
+The simulation should model a small water-distribution network and demonstrate how abnormal pressure and flow behavior can indicate a probable leak.
+
+The demonstration must show:
+
+NORMAL NETWORK
+
+↓
+
+Leak introduced
+
+↓
+
+Pressure/flow changes
+
+↓
+
+Anomaly detected
+
+↓
+
+Leak risk increases
+
+↓
+
+Probable leak zone identified
+
+↓
+
+Maintenance recommendation
+
+---
+
+# 2. TECHNOLOGY
+
+Use:
+
+- Python
+- WNTR
+- EPANET-compatible water network modelling
+- NumPy
+- Pandas
+- Matplotlib
+- NetworkX
+- Scikit-learn
+
+Use WNTR for the water-network hydraulic simulation.
+
+Use Isolation Forest from Scikit-learn for anomaly detection.
+
+Use Matplotlib for the live visualization.
+
+Do not introduce unnecessary frameworks.
+
+---
+
+# 3. WATER NETWORK
+
+Create a realistic but manageable water distribution network.
+
+Include:
+
+- 1 reservoir
+- 1 tank if appropriate
+- 10–12 junctions
+- 4 zones
+- Main pipeline
+- Branch pipelines
+- Multiple pipes
+- Realistic water demands
+
+Network structure should resemble:
+
+                RESERVOIR
+                    |
+                 MAIN PIPE
+                    |
+          ┌─────────┼─────────┐
+          ↓         ↓         ↓
+       ZONE A    ZONE B    ZONE C
+                    |
+                  ZONE D
+
+Each zone should contain multiple junctions/pipes.
+
+Use meaningful names:
+
+ZONE_A
+ZONE_B
+ZONE_C
+ZONE_D
+
+---
+
+# 4. NORMAL SIMULATION
+
+Before introducing a leak, simulate normal operation.
+
+Display:
+
+- Pressure at junctions
+- Flow through pipes
+- Simulation time
+- Zone status
+
+All zones should initially show:
+
+GREEN — NORMAL
+
+---
+
+# 5. LEAK EVENT
+
+Create a deterministic leak event in **ZONE B**.
+
+The leak must occur at a predefined simulation time.
+
+For example:
+
+0–30 seconds:
+NORMAL
+
+30–60 seconds:
+Leak develops
+
+60+ seconds:
+High-risk condition
+
+The leak must cause measurable changes in the simulated network.
+
+Do not simply change the displayed numbers manually.
+
+The pressure and flow changes should come from the water-network simulation as much as practical.
+
+---
+
+# 6. SMARTLEAK DETECTION
+
+Implement two detection mechanisms.
+
+## A. Rule-Based Detection
+
+Check:
+
+- Pressure deviation
+- Flow deviation
+- Persistence of abnormal behavior
+
+Example:
+
+Pressure anomaly → increase risk
+
+Flow anomaly → increase risk
+
+Persistent anomaly → increase risk
+
+## B. Machine Learning
+
+Use:
+
+**Isolation Forest**
+
+Input features should include appropriate measurements such as:
+
+- pressure
+- flow
+- pressure change
+- flow change
+- rolling pressure behavior
+- rolling flow behavior
+
+Train/use the model on normal operating behavior and identify abnormal observations.
+
+IMPORTANT:
+
+An ML anomaly is NOT automatically a confirmed leak.
+
+Use the terminology:
+
+**Anomaly detected**
+
+and
+
+**Probable Leak Zone**
+
+---
+
+# 7. LEAK RISK SCORE
+
+Calculate a risk score from 0–100.
+
+Initial weighting:
+
+Pressure anomaly = 35%
+
+Flow anomaly = 35%
+
+ML anomaly = 20%
+
+Persistence = 10%
+
+Risk levels:
+
+0–30 → LOW
+
+31–60 → MEDIUM
+
+61–100 → HIGH
+
+Display the individual contributions so the score is explainable.
+
+Example:
+
+Pressure anomaly: +31
+
+Flow anomaly: +29
+
+ML anomaly: +18
+
+Persistence: +9
+
+Total Risk: 87%
+
+---
+
+# 8. LIVE CLASSROOM SIMULATION
+
+The most important requirement is that I can demonstrate this live in front of my class.
+
+Create a single interactive Python visualization.
+
+Include these controls:
+
+[ START SIMULATION ]
+
+[ PAUSE ]
+
+[ RESET ]
+
+[ INTRODUCE LEAK ]
+
+Simulation Speed:
+
+1×
+2×
+5×
+
+The simulation must be deterministic.
+
+When I press RESET and START, the same demonstration should happen every time.
+
+---
+
+# 9. LIVE VISUALIZATION
+
+Create one main simulation window.
+
+Display:
+
+## SMARTLEAK
+
+**INTELLIGENT WATER NETWORK SIMULATION**
+
+Network Status:
+
+● NORMAL
+
+Then update it automatically.
+
+Show four zone cards:
+
+ZONE A
+NORMAL
+
+ZONE B
+NORMAL → WARNING → HIGH RISK
+
+ZONE C
+NORMAL
+
+ZONE D
+NORMAL
+
+---
+
+# 10. NETWORK VISUALIZATION
+
+Display the water network using NetworkX and/or Matplotlib.
+
+Show:
+
+Reservoir
+
+Pipes
+
+Junctions
+
+Zones
+
+Use:
+
+GREEN = NORMAL
+
+YELLOW = WARNING
+
+RED = HIGH RISK
+
+When Zone B becomes high risk:
+
+- Highlight Zone B
+- Highlight the affected pipe/junction
+- Display:
+
+**PROBABLE LEAK ZONE: ZONE B**
+
+Do not claim exact leak localization unless the simulation genuinely supports it.
+
+---
+
+# 11. LIVE GRAPHS
+
+Show three continuously updating graphs.
+
+### Graph 1
+Pressure vs Time
+
+### Graph 2
+Flow vs Time
+
+### Graph 3
+Leak Risk vs Time
+
+Initially the graphs should be stable.
+
+After the leak:
+
+Pressure should show abnormal behavior.
+
+Flow should show abnormal behavior.
+
+Risk should increase.
+
+---
+
+# 12. ALERT
+
+When the risk becomes HIGH, display a clear alert:
+
+🚨 HIGH-RISK ANOMALY DETECTED
+
+Zone: B
+
+Pressure: [current value]
+
+Flow: [current value]
+
+Leak Risk: [current percentage]
+
+Severity: HIGH
+
+Then display:
+
+### WHY WAS THIS FLAGGED?
+
+✓ Pressure deviation
+
+✓ Abnormal flow
+
+✓ ML anomaly
+
+✓ Persistent abnormality
+
+---
+
+# 13. RECOMMENDED ACTION
+
+Display:
+
+**Recommended Action**
+
+Inspect the affected Zone B pipeline section.
+
+Do not claim that the software physically repairs the leak.
+
+The system only recommends inspection/maintenance.
+
+---
+
+# 14. MAINTENANCE PRIORITY
+
+At the end of the simulation, display:
+
+CRITICAL — Zone B
+
+HIGH — Zone D
+
+MEDIUM — Zone C
+
+LOW — Zone A
+
+The priority should be based on the calculated risk score.
+
+---
+
+# 15. LIVE DEMO SEQUENCE
+
+Make the complete demonstration approximately 2–3 minutes.
+
+Expected sequence:
+
+### Phase 1
+0–30 seconds
+
+Network is NORMAL.
+
+### Phase 2
+30–60 seconds
+
+Leak begins in Zone B.
+
+### Phase 3
+60–90 seconds
+
+Pressure/flow abnormalities become visible.
+
+### Phase 4
+90–120 seconds
+
+Isolation Forest detects abnormal behavior.
+
+### Phase 5
+120+ seconds
+
+Risk becomes HIGH.
+
+Zone B becomes RED.
+
+Alert appears.
+
+Probable leak zone is displayed.
+
+Maintenance recommendation appears.
+
+---
+
+# 16. DEMO RELIABILITY
+
+This is extremely important.
+
+The simulation must be reliable for a classroom presentation.
+
+Requirements:
+
+- Deterministic results
+- No dependence on external APIs
+- No internet required after installation
+- No random behavior that changes the result every time
+- RESET must completely restore the initial state
+- START must always produce the same sequence
+- PAUSE must work
+- Speed controls must work
+- No unnecessary animations that could cause crashes
+
+If a dependency is unavailable, fix the installation/configuration rather than replacing the entire architecture.
+
+---
+
+# 17. PROJECT FILES
+
+Create only the files that are actually necessary.
+
+At minimum:
+
+main.py
+
+requirements.txt
+
+README.md
+
+and any required WNTR/EPANET network file.
+
+Keep the project simple.
+
+---
+
+# 18. RUN COMMAND
+
+The complete application must run with:
+
+python main.py
+
+Provide the exact installation command:
+
+pip install -r requirements.txt
+
+---
+
+# 19. TESTING
+
+Before declaring the project complete:
+
+1. Install dependencies.
+2. Run main.py.
+3. Verify the network loads.
+4. Verify normal simulation.
+5. Verify leak event.
+6. Verify pressure/flow changes.
+7. Verify Isolation Forest.
+8. Verify risk score.
+9. Verify Zone B detection.
+10. Verify graphs.
+11. Verify START.
+12. Verify PAUSE.
+13. Verify RESET.
+14. Verify simulation speed.
+15. Run the entire demo at least three times.
+
+Fix any errors you find.
+
+---
+
+# 20. FINAL OUTPUT
+
+When finished, show me:
+
+1. Project structure
+2. How to install
+3. How to run
+4. How the leak detection works
+5. How to perform the classroom demonstration
+
+Do NOT add unnecessary features.
+
+The final product must be a **working Python water-network simulation that I can run live during my college presentation**, not a website or software platform with frontend/backend architecture.
