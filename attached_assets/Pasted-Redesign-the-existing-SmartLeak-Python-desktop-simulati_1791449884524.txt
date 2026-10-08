@@ -1,0 +1,17 @@
+Redesign the existing SmartLeak Python desktop simulation UI to look significantly more professional and presentation-ready. Do NOT change the underlying WNTR simulation, EPANET model, leak detection logic, Isolation Forest logic, risk-score calculation, deterministic sequence, or existing functionality.
+Convert the current Matplotlib desktop visualization into a polished dark-themed SmartLeak monitoring dashboard suitable for a college project presentation.
+Add a professional header with “SMARTLEAK” and subtitle “Intelligent Water Network Monitoring”.
+Add prominent KPI/status cards for System Status, Network Pressure, Total Flow, Leak Risk, and Probable Leak Zone.
+Improve the water-network visualization with clearly separated Zone A, Zone B, Zone C and Zone D, better node/pipe styling, directional flow visualization, readable labels, and strong visual highlighting when Zone B becomes abnormal.
+Add a professional right-side “LIVE ANALYSIS” panel showing Pressure Anomaly, Flow Anomaly, ML Anomaly, Persistence, and total Leak Risk.
+Add a clear alert panel showing “ANOMALY DETECTED”, probable leak zone, severity, and recommended inspection action.
+Improve the three time-series charts for pressure, Zone B flow, and leak risk with clean labels, readable axes, subtle gridlines, and professional styling.
+Keep RESET, START SIMULATION, PAUSE, INTRODUCE LEAK, and 1×/2×/5× controls clearly visible and easy to use.
+Use a modern dark navy/charcoal interface with restrained cyan/blue accents and green/yellow/red status colors only where they communicate system state.
+Make the entire interface readable when projected on a classroom screen. Use large fonts and high contrast.
+Keep everything as a standalone Python desktop application. Do not add React, HTML, CSS, Flask, FastAPI, REST APIs, databases, login systems, IoT hardware, or external services.
+Preserve the existing self-test:
+python main.py --self-test
+and normal launch:
+python main.py
+After modifying the UI, run the self-test and ensure all existing detection and simulation functionality still passes.

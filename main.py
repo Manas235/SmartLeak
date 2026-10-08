@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import wntr
 from matplotlib.axes import Axes
+from matplotlib.patches import Rectangle
 from matplotlib.widgets import Button
 from sklearn.ensemble import IsolationForest
 
@@ -473,6 +474,25 @@ class SmartLeakSimulation:
 class SmartLeakWindow:
     """Single interactive Matplotlib window for live classroom presentation."""
 
+    BG = "#07111B"
+    PANEL = "#101E2A"
+    PANEL_ALT = "#142634"
+    BORDER = "#263A49"
+    TEXT = "#E8F1F5"
+    MUTED = "#8FA5B1"
+    CYAN = "#40C8D7"
+    BLUE = "#5595F5"
+    GREEN = "#39C98A"
+    AMBER = "#F3BB4F"
+    RED = "#F16C79"
+    TRACK = "#243846"
+    STATUS_COLORS = {
+        "NORMAL": GREEN,
+        "WARNING": AMBER,
+        "ANOMALY DETECTED": CYAN,
+        "HIGH RISK": RED,
+    }
+
     def __init__(self, engine: SmartLeakSimulation) -> None:
         self.engine = engine
         self.graph = self._build_graph()
@@ -491,6 +511,7 @@ class SmartLeakWindow:
         self.flow_history: list[float] = []
         self.risk_history: list[float] = []
         self._make_figure()
+        self._append_trend()
         self.timer = self.figure.canvas.new_timer(interval=1000)
         self.timer.add_callback(self._on_timer)
         self.timer.start()
@@ -521,82 +542,181 @@ class SmartLeakWindow:
     def _make_figure(self) -> None:
         self.figure = plt.figure(
             figsize=(16, 10),
-            facecolor="#f3f6f7",
+            facecolor=self.BG,
             num=APP_TITLE,
         )
         self.figure.canvas.manager.set_window_title("SmartLeak Classroom Demo")
-        self.ax_header = self.figure.add_axes([0.035, 0.90, 0.93, 0.075])
-        self.ax_network = self.figure.add_axes([0.04, 0.48, 0.47, 0.39])
-        self.ax_readings = self.figure.add_axes([0.53, 0.48, 0.43, 0.39])
-        self.ax_pressure = self.figure.add_axes([0.06, 0.15, 0.27, 0.25])
-        self.ax_flow = self.figure.add_axes([0.365, 0.15, 0.27, 0.25])
-        self.ax_risk = self.figure.add_axes([0.67, 0.15, 0.27, 0.25])
-        self.ax_controls = self.figure.add_axes([0.06, 0.045, 0.88, 0.065])
-        for axis in (
-            self.ax_header, self.ax_network, self.ax_readings, self.ax_controls,
-        ):
-            axis.set_facecolor("#ffffff")
+        self.ax_header = self.figure.add_axes([0.035, 0.915, 0.93, 0.07])
+        self.ax_header.set_facecolor(self.BG)
         self.ax_header.axis("off")
-        self.ax_readings.axis("off")
-        self.ax_controls.axis("off")
-        self._style_chart(self.ax_pressure, "PRESSURE VS TIME", "Pressure (m)")
-        self._style_chart(self.ax_flow, "ZONE B PIPE FLOW VS TIME", "Flow (L/s)")
-        self._style_chart(self.ax_risk, "LEAK RISK VS TIME", "Risk (%)")
+
+        card_gap = 0.012
+        card_width = (0.93 - card_gap * 4) / 5
+        self.kpi_axes = [
+            self.figure.add_axes([
+                0.035 + index * (card_width + card_gap),
+                0.795,
+                card_width,
+                0.105,
+            ])
+            for index in range(5)
+        ]
+        self.ax_network = self.figure.add_axes([0.035, 0.415, 0.60, 0.36])
+        self.ax_analysis = self.figure.add_axes([0.652, 0.415, 0.313, 0.36])
+        self.ax_alert = self.figure.add_axes([0.035, 0.295, 0.93, 0.10])
+        for axis in (self.ax_network, self.ax_analysis, self.ax_alert):
+            self._style_panel(axis)
+
+        chart_gap = 0.018
+        chart_width = (0.93 - chart_gap * 2) / 3
+        chart_axes = [
+            self.figure.add_axes([
+                0.035 + index * (chart_width + chart_gap),
+                0.075,
+                chart_width,
+                0.195,
+            ])
+            for index in range(3)
+        ]
+        self.ax_pressure, self.ax_flow, self.ax_risk = chart_axes
+        self._style_chart(
+            self.ax_pressure,
+            "PRESSURE  ·  ZONE B",
+            "Pressure (m)",
+            self.CYAN,
+        )
+        self._style_chart(
+            self.ax_flow,
+            "PIPE FLOW  ·  ZONE B",
+            "Flow (L/s)",
+            self.BLUE,
+        )
+        self._style_chart(
+            self.ax_risk,
+            "LEAK RISK  ·  ZONE B",
+            "Risk score",
+            self.RED,
+        )
         self.pressure_line, = self.ax_pressure.plot(
-            [], [], color="#208d88", linewidth=2.3,
+            [], [], color=self.CYAN, linewidth=2.2, solid_capstyle="round",
         )
         self.flow_line, = self.ax_flow.plot(
-            [], [], color="#dd8f45", linewidth=2.3,
+            [], [], color=self.BLUE, linewidth=2.2, solid_capstyle="round",
         )
         self.risk_line, = self.ax_risk.plot(
-            [], [], color="#d74b50", linewidth=2.3,
+            [], [], color=self.RED, linewidth=2.2, solid_capstyle="round",
+        )
+        self.ax_pressure.axhline(
+            self.engine.calibration.baselines["B"].pressure_m,
+            color=self.MUTED,
+            linestyle=(0, (4, 4)),
+            linewidth=0.9,
+            alpha=0.65,
+        )
+        self.ax_flow.axhline(
+            self.engine.calibration.baselines["B"].flow_lps,
+            color=self.MUTED,
+            linestyle=(0, (4, 4)),
+            linewidth=0.9,
+            alpha=0.65,
+        )
+        self.ax_risk.axhline(
+            61,
+            color=self.AMBER,
+            linestyle=(0, (4, 4)),
+            linewidth=0.9,
+            alpha=0.75,
         )
         self.ax_risk.set_ylim(0, 100)
         self._make_controls()
 
     @staticmethod
-    def _style_chart(axis: Axes, title: str, ylabel: str) -> None:
-        axis.set_facecolor("#ffffff")
-        axis.set_title(title, loc="left", fontsize=10, fontweight="bold", pad=10)
-        axis.set_xlabel("Simulation time (s)", fontsize=8)
-        axis.set_ylabel(ylabel, fontsize=8)
-        axis.grid(True, color="#e8edef", linewidth=0.8)
-        axis.tick_params(labelsize=8)
+    def _style_panel(axis: Axes) -> None:
+        axis.set_facecolor(SmartLeakWindow.PANEL)
+        axis.patch.set_edgecolor(SmartLeakWindow.BORDER)
+        axis.patch.set_linewidth(0.9)
         for spine in axis.spines.values():
-            spine.set_color("#dfe6e8")
+            spine.set_color(SmartLeakWindow.BORDER)
+            spine.set_linewidth(0.8)
+
+    def _style_chart(
+        self,
+        axis: Axes,
+        title: str,
+        ylabel: str,
+        color: str,
+    ) -> None:
+        self._style_panel(axis)
+        axis.set_title(
+            title,
+            loc="left",
+            color=self.TEXT,
+            fontsize=9,
+            fontweight="bold",
+            pad=8,
+        )
+        axis.set_xlabel("Simulation time (s)", fontsize=7.5, color=self.MUTED)
+        axis.set_ylabel(ylabel, fontsize=7.5, color=self.MUTED)
+        axis.set_xlim(0, DEMO_SECONDS)
+        axis.set_xticks((0, 30, 60, 90, 120, 150))
+        axis.grid(True, color=self.BORDER, linewidth=0.7, alpha=0.8)
+        axis.tick_params(colors=self.MUTED, labelsize=7.5, length=3)
+        axis.margins(x=0.02, y=0.15)
 
     def _make_controls(self) -> None:
+        self.ax_controls = self.figure.add_axes([0.035, 0.012, 0.93, 0.05])
+        self._style_panel(self.ax_controls)
+        self.ax_controls.set_xticks([])
+        self.ax_controls.set_yticks([])
+        self.ax_controls.text(
+            0.99,
+            0.5,
+            "",
+            transform=self.ax_controls.transAxes,
+            fontsize=8.5,
+            color=self.MUTED,
+            ha="right",
+            va="center",
+        )
+        self.control_status = self.ax_controls.texts[0]
+
         control_specs = [
-            (0.01, 0.50, 0.13, "START SIMULATION", self._start, "#18785d"),
-            (0.15, 0.50, 0.09, "PAUSE", self._pause, "#546975"),
-            (0.25, 0.50, 0.09, "RESET", self._reset, "#546975"),
-            (0.36, 0.50, 0.15, "INTRODUCE LEAK", self._introduce_leak, "#b77821"),
-            (0.58, 0.50, 0.10, "1× SPEED", lambda _: self._set_speed(1), "#1d7774"),
-            (0.69, 0.50, 0.10, "2× SPEED", lambda _: self._set_speed(2), "#1d7774"),
-            (0.80, 0.50, 0.10, "5× SPEED", lambda _: self._set_speed(5), "#1d7774"),
+            (0.008, 0.15, 0.155, "START SIMULATION", self._start, self.GREEN),
+            (0.170, 0.15, 0.092, "PAUSE", self._pause, self.PANEL_ALT),
+            (0.269, 0.15, 0.092, "RESET", self._reset, self.PANEL_ALT),
+            (
+                0.370, 0.15, 0.158, "INTRODUCE LEAK",
+                self._introduce_leak, "#6D5225",
+            ),
+            (0.548, 0.15, 0.075, "1× SPEED", lambda _: self._set_speed(1), self.PANEL_ALT),
+            (0.630, 0.15, 0.075, "2× SPEED", lambda _: self._set_speed(2), self.PANEL_ALT),
+            (0.712, 0.15, 0.075, "5× SPEED", lambda _: self._set_speed(5), self.PANEL_ALT),
         ]
         self.buttons: list[Button] = []
+        self.speed_buttons: dict[int, Button] = {}
         control_position = self.ax_controls.get_position()
         for x, y, width, label, callback, color in control_specs:
             axis = self.figure.add_axes([
                 control_position.x0 + x * control_position.width,
                 control_position.y0 + y * control_position.height,
                 width * control_position.width,
-                0.46 * control_position.height,
+                0.70 * control_position.height,
             ])
             button = Button(
                 axis,
                 label,
                 color=color,
-                hovercolor="#253c49",
+                hovercolor="#294454",
             )
-            button.label.set_color("#ffffff")
-            button.label.set_fontsize(8)
+            button.ax.set_facecolor(color)
+            button.ax.patch.set_edgecolor(self.BORDER)
+            button.ax.patch.set_linewidth(0.7)
+            button.label.set_color(self.BG if label == "START SIMULATION" else self.TEXT)
+            button.label.set_fontsize(8.2)
             button.on_clicked(callback)
             self.buttons.append(button)
-        self.control_status = self.figure.text(
-            0.075, 0.052, "", fontsize=8, color="#49606a", va="bottom",
-        )
+            if label.endswith("SPEED"):
+                self.speed_buttons[int(label[0])] = button
 
     def _start(self, _event: Any) -> None:
         self.engine.start()
@@ -612,6 +732,7 @@ class SmartLeakWindow:
         self.pressure_history.clear()
         self.flow_history.clear()
         self.risk_history.clear()
+        self._append_trend()
         self.refresh()
 
     def _introduce_leak(self, _event: Any) -> None:
@@ -638,41 +759,151 @@ class SmartLeakWindow:
 
     @staticmethod
     def _phase_color(status: str) -> str:
-        return ZONE_COLORS.get(status, "#21845b")
+        return SmartLeakWindow.STATUS_COLORS.get(
+            status,
+            SmartLeakWindow.MUTED,
+        )
+
+    def _zone_state(self, zone: str) -> str:
+        score = self.engine.risk[zone]
+        if score >= 61:
+            return "HIGH RISK"
+        if score >= 31:
+            return "WARNING"
+        if self.engine.anomaly_flags[zone]:
+            return "ANOMALY DETECTED"
+        return "NORMAL"
+
+    def _draw_kpis(self) -> None:
+        mean_pressure = float(np.mean(list(self.engine.snapshot.pressures.values())))
+        total_flow = self.engine.snapshot.flows_lps["P_SUPPLY"]
+        highest_risk = max(self.engine.risk.values(), default=0.0)
+        probable_zone = self.engine.probable_zone
+        status = self.engine.network_status
+        metrics = (
+            ("SYSTEM STATUS", status, "Live network state", self._phase_color(status)),
+            ("NETWORK PRESSURE", f"{mean_pressure:.1f} m", "Mean · 12 junctions", self.CYAN),
+            ("TOTAL FLOW", f"{total_flow:.2f} L/s", "Reservoir supply", self.BLUE),
+            ("LEAK RISK", f"{highest_risk:.0f} / 100", "Highest zone score", self._phase_color(
+                "HIGH RISK" if highest_risk >= 61 else
+                "WARNING" if highest_risk >= 31 else "NORMAL"
+            )),
+            (
+                "PROBABLE LEAK ZONE",
+                f"ZONE {probable_zone}" if probable_zone else "PENDING",
+                "Inspection estimate only",
+                self._phase_color(
+                    self._zone_state(probable_zone) if probable_zone else "NORMAL"
+                ),
+            ),
+        )
+        for axis, (label, value, detail, accent) in zip(self.kpi_axes, metrics):
+            axis.clear()
+            self._style_panel(axis)
+            axis.set_xticks([])
+            axis.set_yticks([])
+            axis.text(
+                0.055, 0.80, label,
+                transform=axis.transAxes,
+                fontsize=7.7,
+                fontweight="bold",
+                color=self.MUTED,
+                va="center",
+            )
+            value_size = 13 if len(value) > 14 else 16
+            axis.text(
+                0.055, 0.47, value,
+                transform=axis.transAxes,
+                fontsize=value_size,
+                fontweight="bold",
+                color=accent,
+                va="center",
+            )
+            axis.text(
+                0.055, 0.15, detail,
+                transform=axis.transAxes,
+                fontsize=7.4,
+                color=self.MUTED,
+                va="center",
+            )
 
     def _draw_network(self) -> None:
         axis = self.ax_network
         axis.clear()
-        axis.set_facecolor("#ffffff")
-        axis.set_title(
-            "LIVE NETWORK  ·  pressure at junctions (m)  ·  pipes (L/s)",
-            loc="left",
-            fontsize=9,
+        self._style_panel(axis)
+        axis.set_xticks([])
+        axis.set_yticks([])
+        axis.text(
+            0.025, 0.96, "LIVE WATER NETWORK",
+            transform=axis.transAxes,
+            fontsize=9.5,
             fontweight="bold",
+            color=self.TEXT,
+            va="top",
         )
+        axis.text(
+            0.975, 0.96, "JUNCTION LABELS: PRESSURE (m)  ·  PIPE LABELS: FLOW (L/s)",
+            transform=axis.transAxes,
+            fontsize=6.8,
+            color=self.MUTED,
+            ha="right",
+            va="top",
+        )
+
+        zone_bounds = (
+            ("A", -0.35, 1.65),
+            ("B", 1.65, 3.65),
+            ("C", 3.65, 5.65),
+            ("D", 5.65, 7.55),
+        )
+        lane_colors = ("#153044", "#183243", "#163447", "#173044")
+        for (zone, left, right), lane_color in zip(zone_bounds, lane_colors):
+            axis.axvspan(
+                left, right, ymin=0.12, ymax=0.86,
+                facecolor=lane_color, alpha=0.63, zorder=0,
+            )
+            axis.axvline(
+                right, ymin=0.12, ymax=0.86,
+                color=self.BORDER, linewidth=0.8,
+                linestyle=(0, (3, 4)), zorder=1,
+            )
+            axis.text(
+                (left + right) / 2, 0.49, f"ZONE {zone}",
+                ha="center",
+                va="center",
+                fontsize=7.6,
+                fontweight="bold",
+                color=self._phase_color(self._zone_state(zone)),
+                alpha=0.95,
+                zorder=1,
+            )
+
         snapshot = self.engine.snapshot
         edge_colors = []
         edge_widths = []
         for _, _, data in self.graph.edges(data=True):
             zone = data["zone"]
-            score = self.engine.risk[zone]
-            status = "HIGH RISK" if score >= 61 else "WARNING" if score >= 31 else "NORMAL"
-            edge_colors.append(self._phase_color(status))
-            edge_widths.append(
-                3.0 if zone == self.engine.probable_zone and score >= 61 else 1.8
+            state = self._zone_state(zone)
+            edge_colors.append(self._phase_color(state))
+            is_highlighted = zone == self.engine.probable_zone and state in (
+                "WARNING", "HIGH RISK", "ANOMALY DETECTED",
             )
+            edge_widths.append(3.2 if is_highlighted else 1.5)
         node_colors = []
         node_labels = {}
         for node in self.graph.nodes:
             if node == "RESERVOIR":
-                node_colors.append("#245e77")
-                node_labels[node] = "RES"
+                node_colors.append("#23536C")
+                node_labels[node] = "RES\n79.0m"
             else:
                 zone = self.node_zones[node]
-                score = self.engine.risk[zone]
-                status = "HIGH RISK" if score >= 61 else "WARNING" if score >= 31 else "NORMAL"
-                node_colors.append(self._phase_color(status))
-                node_labels[node] = f"{node}\n{snapshot.pressures[node]:.1f}"
+                state = self._zone_state(zone)
+                node_colors.append(
+                    self._phase_color(state)
+                    if state != "NORMAL"
+                    else "#31576A"
+                )
+                node_labels[node] = f"{node}\n{snapshot.pressures[node]:.1f} m"
         nx.draw_networkx_edges(
             self.graph,
             self.positions,
@@ -680,32 +911,32 @@ class SmartLeakWindow:
             edge_color=edge_colors,
             width=edge_widths,
             arrows=True,
-            arrowsize=11,
+            arrowstyle="-|>",
+            arrowsize=14,
             connectionstyle="arc3,rad=0.0",
+            min_source_margin=15,
+            min_target_margin=17,
         )
         nx.draw_networkx_nodes(
             self.graph,
             self.positions,
             ax=axis,
             node_color=node_colors,
-            node_size=690,
-            edgecolors="#ffffff",
-            linewidths=1.5,
+            node_size=780,
+            edgecolors=self.BORDER,
+            linewidths=1.3,
         )
         nx.draw_networkx_labels(
             self.graph,
             self.positions,
             labels=node_labels,
             ax=axis,
-            font_size=7,
-            font_color="#ffffff",
+            font_size=7.1,
+            font_color="#F7FBFD",
             font_weight="bold",
         )
         edge_labels = {
-            (start, end): (
-                f"{data['pipe'].replace('P_', '')}\n"
-                f"{snapshot.flows_lps[data['pipe']]:.2f}"
-            )
+            (start, end): f"{snapshot.flows_lps[data['pipe']]:.2f}"
             for start, end, data in self.graph.edges(data=True)
         }
         nx.draw_networkx_edge_labels(
@@ -713,186 +944,270 @@ class SmartLeakWindow:
             self.positions,
             edge_labels=edge_labels,
             ax=axis,
-            font_size=5.5,
+            font_size=6.8,
+            font_color=self.TEXT,
             label_pos=0.48,
             rotate=False,
             bbox={
-                "boxstyle": "round,pad=0.08",
-                "fc": "#ffffff",
+                "boxstyle": "round,pad=0.12",
+                "fc": self.BG,
                 "ec": "none",
-                "alpha": 0.88,
+                "alpha": 0.95,
             },
         )
-        axis.set_xlim(-1.45, 7.65)
-        axis.set_ylim(-1.08, 0.75)
+        axis.set_xlim(-1.30, 7.62)
+        axis.set_ylim(-1.03, 0.72)
         axis.axis("off")
 
-    def _draw_readings(self) -> None:
-        axis = self.ax_readings
+    def _draw_analysis(self) -> None:
+        axis = self.ax_analysis
         axis.clear()
-        axis.axis("off")
-        axis.set_facecolor("#ffffff")
-        status = self.engine.network_status
-        axis.text(
-            0.0, 0.98, f"NETWORK STATUS  ·  {status}",
-            transform=axis.transAxes,
-            fontsize=11,
-            fontweight="bold",
-            color=self._phase_color(status),
-            va="top",
+        self._style_panel(axis)
+        axis.set_xticks([])
+        axis.set_yticks([])
+        zone = self.engine.probable_zone or max(
+            self.engine.risk,
+            key=self.engine.risk.get,
         )
-        axis.text(
-            0.0, 0.90,
-            f"SIM TIME  {self.engine.seconds:03d}s / {DEMO_SECONDS}s"
-            f"     PHASE  {self.engine.phase}",
-            transform=axis.transAxes,
-            fontsize=8,
-            color="#49606a",
-            va="top",
-        )
-
-        zone_x = (0.00, 0.25, 0.50, 0.75)
-        for (zone, _nodes), x in zip(ZONE_NODES.items(), zone_x):
-            score = self.engine.risk[zone]
-            state = "HIGH RISK" if score >= 61 else "WARNING" if score >= 31 else "NORMAL"
-            axis.text(
-                x, 0.79,
-                f"ZONE {zone}\n{state}\nRisk {score:.0f}%",
-                transform=axis.transAxes,
-                fontsize=8,
-                color=self._phase_color(state),
-                fontweight="bold",
-                va="top",
-                bbox={
-                    "boxstyle": "round,pad=0.45",
-                    "facecolor": "#f7fafb",
-                    "edgecolor": self._phase_color(state),
-                    "linewidth": 1.0,
-                },
-            )
-
-        axis.text(
-            0.0, 0.57, f"JUNCTION PRESSURE ({PRESSURE_UNIT})",
-            transform=axis.transAxes, fontsize=8, fontweight="bold",
-            color="#29414b",
-        )
-        pressure_rows = []
-        for zone, nodes in ZONE_NODES.items():
-            values = "   ".join(
-                f"{node} {self.engine.snapshot.pressures[node]:.1f}"
-                for node in nodes
-            )
-            pressure_rows.append(f"{zone}:  {values}")
-        axis.text(
-            0.0, 0.53, "\n".join(pressure_rows),
-            transform=axis.transAxes,
-            fontsize=7,
-            color="#43565e",
-            family="monospace",
-            va="top",
-            linespacing=1.5,
-        )
-
-        axis.text(
-            0.0, 0.34, f"PIPE FLOW ({FLOW_UNIT})",
-            transform=axis.transAxes, fontsize=8, fontweight="bold",
-            color="#29414b",
-        )
-        flow_rows = []
-        for zone in ZONE_NODES:
-            core = ZONE_FLOW_PIPES[zone]
-            value = self.engine.snapshot.flows_lps[core]
-            flow_rows.append(f"ZONE {zone}  {core:<12} {value:>5.2f}")
-        axis.text(
-            0.0, 0.30, "\n".join(flow_rows),
-            transform=axis.transAxes,
-            fontsize=7,
-            color="#43565e",
-            family="monospace",
-            va="top",
-            linespacing=1.4,
-        )
-
-        zone = self.engine.probable_zone or "B"
+        score = self.engine.risk[zone]
         parts = self.engine.contributions[zone]
         axis.text(
-            0.49, 0.34, f"RISK BREAKDOWN  ·  ZONE {zone}",
-            transform=axis.transAxes, fontsize=8, fontweight="bold",
-            color="#29414b",
-        )
-        contribution_text = (
-            f"Pressure anomaly  +{parts['pressure']:.0f} / 35\n"
-            f"Flow anomaly       +{parts['flow']:.0f} / 35\n"
-            f"ML anomaly         +{parts['ml']:.0f} / 20\n"
-            f"Persistence        +{parts['persistence']:.0f} / 10\n"
-            f"TOTAL RISK          {self.engine.risk[zone]:.0f}%"
+            0.035, 0.95, "LIVE ANALYSIS",
+            transform=axis.transAxes,
+            fontsize=9.5,
+            fontweight="bold",
+            color=self.TEXT,
+            va="top",
         )
         axis.text(
-            0.49, 0.30, contribution_text,
+            0.965, 0.95, f"ZONE {zone}  ·  {self._zone_state(zone)}",
             transform=axis.transAxes,
-            fontsize=7,
-            color="#43565e",
-            family="monospace",
+            fontsize=7.8,
+            color=self._phase_color(self._zone_state(zone)),
+            fontweight="bold",
+            ha="right",
             va="top",
-            linespacing=1.4,
         )
 
-        if self.engine.risk["B"] >= 61:
-            b = self.engine.measurements["B"]
-            why = []
-            if self.engine.contributions["B"]["pressure"] > 0:
-                why.append("pressure deviation")
-            if self.engine.contributions["B"]["flow"] > 0:
-                why.append("abnormal flow")
-            if self.engine.ml_flags["B"]:
-                why.append("ML anomaly")
-            if self.engine.contributions["B"]["persistence"] > 0:
-                why.append("persistent behavior")
-            alert = (
-                "HIGH-RISK ANOMALY DETECTED  ·  ZONE B\n"
-                f"Pressure {b.pressure_m:.2f} m  ·  Flow {b.flow_lps:.2f} L/s"
-                f"  ·  Risk {self.engine.risk['B']:.0f}%\n"
-                f"WHY FLAGGED  ✓ {'  ·  ✓ '.join(why)}\n"
-                "Recommended: inspect the affected Zone B pipeline section."
+        analysis_rows = (
+            ("Pressure anomaly", "pressure", RISK_WEIGHTS["pressure"],
+             parts["pressure"] >= RISK_WEIGHTS["pressure"] * 0.20),
+            ("Flow anomaly", "flow", RISK_WEIGHTS["flow"],
+             parts["flow"] >= RISK_WEIGHTS["flow"] * 0.20),
+            ("ML anomaly", "ml", RISK_WEIGHTS["ml"],
+             self.engine.ml_flags[zone]),
+            ("Persistence", "persistence", RISK_WEIGHTS["persistence"],
+             parts["persistence"] >= 0.5),
+        )
+        row_positions = (0.73, 0.575, 0.42, 0.265)
+        for (label, key, weight, active), y in zip(
+            analysis_rows, row_positions,
+        ):
+            value = parts[key]
+            bar_color = (
+                self._phase_color("HIGH RISK")
+                if active and score >= 61
+                else self._phase_color("WARNING")
+                if active and score >= 31
+                else self.CYAN
+                if active
+                else self.GREEN
             )
-            if self.engine.seconds >= DEMO_SECONDS:
-                priorities = "  ·  ".join(
-                    f"{label} Zone {zone}"
-                    for zone, _score, label in self.engine.priorities()
-                )
-                alert += f"\nMAINTENANCE PRIORITY  {priorities}"
             axis.text(
-                0.49, 0.075, alert,
+                0.035, y, label,
                 transform=axis.transAxes,
-                fontsize=6.5,
-                color="#a7363d",
-                fontweight="bold",
-                va="top",
-                bbox={
-                    "boxstyle": "round,pad=0.35",
-                    "facecolor": "#fff1f1",
-                    "edgecolor": "#e9b2b4",
-                },
+                fontsize=8.2,
+                color=self.TEXT,
+                va="center",
             )
-        elif self.engine.probable_zone:
             axis.text(
-                0.49, 0.09,
-                f"PROBABLE LEAK ZONE: ZONE {self.engine.probable_zone}\n"
-                "Inspect the affected pipeline; this is not a confirmed leak.",
+                0.72, y, f"+{value:.1f} / {weight:.0f}",
                 transform=axis.transAxes,
-                fontsize=7,
-                color="#a16a16",
+                fontsize=7.8,
+                color=self.MUTED,
+                family="monospace",
+                ha="right",
+                va="center",
+            )
+            axis.text(
+                0.965, y,
+                "ACTIVE" if active else "NORMAL",
+                transform=axis.transAxes,
+                fontsize=7.2,
                 fontweight="bold",
-                va="top",
+                color=bar_color,
+                ha="right",
+                va="center",
+            )
+            bar_y = y - 0.067
+            axis.add_patch(Rectangle(
+                (0.035, bar_y),
+                0.93,
+                0.026,
+                transform=axis.transAxes,
+                facecolor=self.TRACK,
+                edgecolor="none",
+                zorder=2,
+            ))
+            axis.add_patch(Rectangle(
+                (0.035, bar_y),
+                0.93 * min(1.0, value / weight),
+                0.026,
+                transform=axis.transAxes,
+                facecolor=bar_color,
+                edgecolor="none",
+                zorder=3,
+            ))
+
+        axis.text(
+            0.035, 0.075, "TOTAL LEAK RISK",
+            transform=axis.transAxes,
+            fontsize=8.0,
+            color=self.MUTED,
+            fontweight="bold",
+            va="center",
+        )
+        axis.text(
+            0.965, 0.075, f"{score:.0f} / 100",
+            transform=axis.transAxes,
+            fontsize=12.5,
+            color=self._phase_color(
+                "HIGH RISK" if score >= 61 else
+                "WARNING" if score >= 31 else "NORMAL"
+            ),
+            fontweight="bold",
+            ha="right",
+            va="center",
+        )
+        axis.add_patch(Rectangle(
+            (0.035, 0.025),
+            0.93,
+            0.022,
+            transform=axis.transAxes,
+            facecolor=self.TRACK,
+            edgecolor="none",
+            zorder=2,
+        ))
+        axis.add_patch(Rectangle(
+            (0.035, 0.025),
+            0.93 * min(1.0, score / 100),
+            0.022,
+            transform=axis.transAxes,
+            facecolor=self._phase_color(
+                "HIGH RISK" if score >= 61 else
+                "WARNING" if score >= 31 else "NORMAL"
+            ),
+            edgecolor="none",
+            zorder=3,
+        ))
+
+    def _draw_alert(self) -> None:
+        axis = self.ax_alert
+        axis.clear()
+        self._style_panel(axis)
+        axis.set_xticks([])
+        axis.set_yticks([])
+        max_risk = max(self.engine.risk.values(), default=0.0)
+        anomaly_detected = any(self.engine.anomaly_flags.values())
+        probable_zone = self.engine.probable_zone
+        if max_risk >= 61:
+            severity = "HIGH"
+            severity_color = self.RED
+        elif max_risk >= 31:
+            severity = "MODERATE"
+            severity_color = self.AMBER
+        elif anomaly_detected:
+            severity = "EARLY SIGNAL"
+            severity_color = self.CYAN
+        else:
+            severity = "NORMAL"
+            severity_color = self.GREEN
+
+        heading = "ANOMALY DETECTED" if anomaly_detected else "SYSTEM NORMAL"
+        zone_text = f"ZONE {probable_zone}" if probable_zone else "PENDING"
+        if max_risk >= 61 and probable_zone:
+            recommendation = f"Inspect the Zone {probable_zone} pipeline; verify in field."
+            note = "Probable zone only; not a confirmed physical leak."
+        elif anomaly_detected:
+            recommendation = "Continue monitoring; inspect if risk continues to rise."
+            note = "The anomaly score is a simulation signal, not a confirmed leak."
+        else:
+            recommendation = "No inspection recommended while readings remain normal."
+            note = "Monitoring all four zones."
+        if self.engine.seconds >= DEMO_SECONDS:
+            priorities = "  >  ".join(
+                f"{label} {zone}"
+                for zone, _score, label in self.engine.priorities()
+            )
+            note = f"MAINTENANCE PRIORITY  {priorities}"
+
+        axis.text(
+            0.025, 0.68, heading,
+            transform=axis.transAxes,
+            fontsize=10.5,
+            fontweight="bold",
+            color=severity_color,
+            va="center",
+        )
+        axis.text(
+            0.025, 0.28, f"Severity  ·  {severity}  ·  {max_risk:.0f}/100",
+            transform=axis.transAxes,
+            fontsize=8.2,
+            color=self.TEXT,
+            va="center",
+        )
+        axis.text(
+            0.385, 0.68, "PROBABLE LEAK ZONE",
+            transform=axis.transAxes,
+            fontsize=7.6,
+            fontweight="bold",
+            color=self.MUTED,
+            va="center",
+        )
+        axis.text(
+            0.385, 0.28, zone_text,
+            transform=axis.transAxes,
+            fontsize=12,
+            fontweight="bold",
+            color=severity_color if probable_zone else self.MUTED,
+            va="center",
+        )
+        axis.text(
+            0.655, 0.68, "RECOMMENDED ACTION",
+            transform=axis.transAxes,
+            fontsize=7.6,
+            fontweight="bold",
+            color=self.MUTED,
+            va="center",
+        )
+        axis.text(
+            0.655, 0.40, recommendation,
+            transform=axis.transAxes,
+            fontsize=8.2,
+            fontweight="bold",
+            color=self.TEXT,
+            va="center",
+        )
+        if self.engine.seconds >= DEMO_SECONDS:
+            priorities = "  →  ".join(
+                f"{label} ZONE {zone}"
+                for zone, _score, label in self.engine.priorities()
+            )
+            axis.text(
+                0.025, 0.075, f"MAINTENANCE PRIORITY  ·  {priorities}",
+                transform=axis.transAxes,
+                fontsize=8.8,
+                fontweight="bold",
+                color=self.CYAN,
+                va="center",
             )
         else:
             axis.text(
-                0.49, 0.10,
-                "All zones are within the normal operating range.",
+                0.655, 0.15, note,
                 transform=axis.transAxes,
-                fontsize=7,
-                color="#21845b",
-                va="top",
+                fontsize=7.8,
+                color=self.MUTED,
+                va="center",
             )
 
     def _update_chart(
@@ -902,40 +1217,42 @@ class SmartLeakWindow:
         values: list[float],
     ) -> None:
         line.set_data(self.time_history, values)
-        if self.time_history:
-            axis.set_xlim(0, max(30, self.time_history[-1] + 2))
-            axis.relim()
-            axis.autoscale_view(scalex=False, scaley=True)
+        axis.set_xlim(0, DEMO_SECONDS)
+        axis.relim()
+        axis.autoscale_view(scalex=False, scaley=True)
 
     def refresh(self) -> None:
         self.ax_header.clear()
+        self.ax_header.set_facecolor(self.BG)
         self.ax_header.axis("off")
         self.ax_header.text(
-            0.0, 0.74, "SMARTLEAK",
+            0.0, 0.88, "SMARTLEAK",
             transform=self.ax_header.transAxes,
-            fontsize=20,
+            fontsize=21,
             fontweight="bold",
-            color="#173844",
+            color=self.TEXT,
             va="top",
         )
         self.ax_header.text(
-            0.0, 0.18, "INTELLIGENT WATER NETWORK LEAK DETECTION SIMULATION",
+            0.002, 0.10, "Intelligent Water Network Monitoring",
             transform=self.ax_header.transAxes,
-            fontsize=9,
-            color="#536a73",
+            fontsize=10.5,
+            color=self.MUTED,
             va="bottom",
         )
         self.ax_header.text(
-            1.0, 0.66,
-            "DETERMINISTIC  ·  WNTR / EPANET  ·  ISOLATION FOREST",
+            1.0, 0.68,
+            "WNTR / EPANET     ·     ISOLATION FOREST     ·     DETERMINISTIC DEMO",
             transform=self.ax_header.transAxes,
-            fontsize=8,
-            color="#536a73",
+            fontsize=8.3,
+            color=self.CYAN,
             ha="right",
             va="top",
         )
+        self._draw_kpis()
         self._draw_network()
-        self._draw_readings()
+        self._draw_analysis()
+        self._draw_alert()
         self._update_chart(self.ax_pressure, self.pressure_line, self.pressure_history)
         self._update_chart(self.ax_flow, self.flow_line, self.flow_history)
         self._update_chart(self.ax_risk, self.risk_line, self.risk_history)
@@ -944,9 +1261,14 @@ class SmartLeakWindow:
         if self.engine.seconds >= DEMO_SECONDS:
             state = "DEMO COMPLETE"
         self.control_status.set_text(
-            f"{state}     ·     SPEED {self.engine.speed}×"
-            "     ·     RESET restores the same 150-second sequence"
+            f"{state}   ·   {self.engine.phase}   ·   "
+            f"{self.engine.seconds:03d}/{DEMO_SECONDS}s   ·   "
+            f"{self.engine.speed}× SPEED"
         )
+        for speed, button in self.speed_buttons.items():
+            selected = speed == self.engine.speed
+            button.ax.set_facecolor("#23566A" if selected else self.PANEL_ALT)
+            button.label.set_color(self.CYAN if selected else self.TEXT)
         self.figure.canvas.draw_idle()
 
 
